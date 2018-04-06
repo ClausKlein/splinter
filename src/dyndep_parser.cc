@@ -28,8 +28,8 @@ DyndepParser::DyndepParser(State* state, FileReader* file_reader,
     , dyndep_file_(dyndep_file) {
 }
 
-bool DyndepParser::Parse(const string& filename, const string& input,
-                         string* err) {
+bool DyndepParser::Parse(const std::string& filename, const std::string& input,
+                         std::string* err) {
   lexer_.Start(filename, input);
 
   // Require a supported ninja_dyndep_version value immediately so
@@ -73,25 +73,25 @@ bool DyndepParser::Parse(const string& filename, const string& input,
 }
 
 bool DyndepParser::ParseDyndepVersion(string* err) {
-  string name;
+  std::string name;
   EvalString let_value;
   if (!ParseLet(&name, &let_value, err))
     return false;
   if (name != "ninja_dyndep_version") {
     return lexer_.Error("expected 'ninja_dyndep_version = ...'", err);
   }
-  string version = let_value.Evaluate(&env_);
+  std::string version = let_value.Evaluate(&env_);
   int major, minor;
   ParseVersion(version, &major, &minor);
   if (major != 1 || minor != 0) {
     return lexer_.Error(
-      string("unsupported 'ninja_dyndep_version = ") + version + "'", err);
+      std::string("unsupported 'ninja_dyndep_version = ") + version + "'", err);
     return false;
   }
   return true;
 }
 
-bool DyndepParser::ParseLet(string* key, EvalString* value, string* err) {
+bool DyndepParser::ParseLet(string* key, EvalString* value, std::string* err) {
   if (!lexer_.ReadIdent(key))
     return lexer_.Error("expected variable name", err);
   if (!ExpectToken(Lexer::EQUALS, err))
@@ -112,8 +112,8 @@ bool DyndepParser::ParseEdge(string* err) {
     if (out0.empty())
       return lexer_.Error("expected path", err);
 
-    string path = out0.Evaluate(&env_);
-    string path_err;
+    std::string path = out0.Evaluate(&env_);
+    std::string path_err;
     uint64_t slash_bits;
     if (!CanonicalizePath(&path, &slash_bits, &path_err))
       return lexer_.Error(path_err, err);
@@ -153,7 +153,7 @@ bool DyndepParser::ParseEdge(string* err) {
   if (!ExpectToken(Lexer::COLON, err))
     return false;
 
-  string rule_name;
+  std::string rule_name;
   if (!lexer_.ReadIdent(&rule_name) || rule_name != "dyndep")
     return lexer_.Error("expected build command name 'dyndep'", err);
 
@@ -187,20 +187,20 @@ bool DyndepParser::ParseEdge(string* err) {
     return false;
 
   if (lexer_.PeekToken(Lexer::INDENT)) {
-    string key;
+    std::string key;
     EvalString val;
     if (!ParseLet(&key, &val, err))
       return false;
     if (key != "restat")
       return lexer_.Error("binding is not 'restat'", err);
-    string value = val.Evaluate(&env_);
+    std::string value = val.Evaluate(&env_);
     dyndeps->restat_ = !value.empty();
   }
 
   dyndeps->implicit_inputs_.reserve(ins.size());
   for (vector<EvalString>::iterator i = ins.begin(); i != ins.end(); ++i) {
-    string path = i->Evaluate(&env_);
-    string path_err;
+    std::string path = i->Evaluate(&env_);
+    std::string path_err;
     uint64_t slash_bits;
     if (!CanonicalizePath(&path, &slash_bits, &path_err))
       return lexer_.Error(path_err, err);
@@ -210,8 +210,8 @@ bool DyndepParser::ParseEdge(string* err) {
 
   dyndeps->implicit_outputs_.reserve(outs.size());
   for (vector<EvalString>::iterator i = outs.begin(); i != outs.end(); ++i) {
-    string path = i->Evaluate(&env_);
-    string path_err;
+    std::string path = i->Evaluate(&env_);
+    std::string path_err;
     uint64_t slash_bits;
     if (!CanonicalizePath(&path, &slash_bits, &path_err))
       return lexer_.Error(path_err, err);
