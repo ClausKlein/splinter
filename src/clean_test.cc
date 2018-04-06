@@ -17,6 +17,8 @@
 
 #include "test.h"
 
+using namespace std;
+
 struct CleanTest : public StateTestWithBuiltinRules {
   VirtualFileSystem fs_;
   BuildConfig config_;

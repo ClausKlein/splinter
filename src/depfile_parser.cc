@@ -16,6 +16,8 @@
 #include "depfile_parser.h"
 #include "util.h"
 
+using namespace std;
+
 DepfileParser::DepfileParser(DepfileParserOptions options)
   : options_(options)
 {
