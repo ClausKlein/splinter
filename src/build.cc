@@ -340,9 +340,8 @@ bool Plan::AddSubTarget(Node* node, Node* dependent, std::string* err,
 
   // If an entry in want_ does not already exist for edge, create an entry which
   // maps to kWantNothing, indicating that we do not want to build this entry itself.
-  std::pair<std::map<Edge*, Want>::iterator, bool> want_ins =
-    want_.emplace(edge, kWantNothing);
-  Want& want = want_ins.first->second;
+  auto const& [it, success] = want_.emplace(edge, kWantNothing);
+  Want& want = it->second;
 
   if (dyndep_walk && want == kWantToFinish)
     return false;  // Don't need to do anything with already-scheduled edge.
@@ -353,13 +352,13 @@ bool Plan::AddSubTarget(Node* node, Node* dependent, std::string* err,
     want = kWantToStart;
     EdgeWanted(edge);
     if (!dyndep_walk && edge->AllInputsReady())
-      ScheduleWork(want_ins.first);
+      ScheduleWork(it);
   }
 
   if (dyndep_walk)
     dyndep_walk->insert(edge);
 
-  if (!want_ins.second)
+  if (!success)
     return true;  // We've already processed the inputs.
 
   for (const auto & item : edge->inputs_)
@@ -632,7 +631,7 @@ void Plan::UnmarkDependents(Node* node, std::set<Node*>* dependents) {
     if (edge->mark_ != Edge::VisitNone) {
       edge->mark_ = Edge::VisitNone;
       for (auto const& item : edge->outputs_) {
-        if (dependents->insert(item).second)
+        if (auto const& [it, success] = dependents->insert(item); success)
           UnmarkDependents(item, dependents);
       }
     }
@@ -641,10 +640,10 @@ void Plan::UnmarkDependents(Node* node, std::set<Node*>* dependents) {
 
 void Plan::Dump() {
   printf("pending: %d\n", (int)want_.size());
-  for (const auto & item : want_) {
-    if (item.second != kWantNothing)
+  for (auto const& [edge, want] : want_) {
+    if (want != kWantNothing)
       printf("want ");
-    item.first->Dump();
+    edge->Dump();
   }
   printf("ready: %d\n", (int)ready_.size());
 }
@@ -665,9 +664,9 @@ struct RealCommandRunner final : public CommandRunner {
 
 std::vector<Edge*> RealCommandRunner::GetActiveEdges() {
   std::vector<Edge*> edges;
-  for (const auto & item : subproc_to_edge_)
+  for (auto const& [subproc, edge] : subproc_to_edge_)
   {
-    edges.push_back(item.second);
+    edges.push_back(edge);
   }
   return edges;
 }

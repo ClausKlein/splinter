@@ -61,9 +61,8 @@ bool DyndepLoader::LoadDyndeps(Node* node, DyndepFile* ddf,
   }
 
   // Reject extra outputs in dyndep file.
-  for (auto const& item : *ddf) {
-    if (!item.second.used_) {
-      Edge* const edge = item.first;
+  for (auto const& [edge, dyndep] : *ddf) {
+    if (!dyndep.used_) {
       *err = ("dyndep file '" + node->path() + "' mentions output "
               "'" + edge->outputs_[0]->path() + "' whose build statement "
               "does not have a dyndep binding for the file");
