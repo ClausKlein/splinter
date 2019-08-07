@@ -81,10 +81,12 @@ struct Plan {
 
   /// Update the build plan to account for modifications made to the graph
   /// by information loaded from a dyndep file.
-  bool DyndepsLoaded(DependencyScan* scan, Node* node,
-                     const DyndepFile& ddf, std::string* err);
-private:
-  bool RefreshDyndepDependents(DependencyScan* scan, Node* node, std::string* err);
+  bool DyndepsLoaded(DependencyScan* scan, Node* node, const DyndepFile& ddf,
+                     std::string* err);
+
+ private:
+  bool RefreshDyndepDependents(DependencyScan* scan, Node* node,
+                               std::string* err);
   void UnmarkDependents(Node* node, std::set<Node*>* dependents);
   bool AddSubTarget(Node* node, Node* dependent, std::string* err,
                     std::set<Edge*>* dyndep_walk);
@@ -224,9 +226,9 @@ struct Builder {
   BuildStatus* status_;
 
  private:
-   bool ExtractDeps(CommandRunner::Result* result, const std::string& deps_type,
-                    const std::string& deps_prefix, std::vector<Node*>* deps_nodes,
-                    std::string* err);
+  bool ExtractDeps(CommandRunner::Result* result, const std::string& deps_type,
+                   const std::string& deps_prefix,
+                   std::vector<Node*>* deps_nodes, std::string* err);
 
   DiskInterface* disk_interface_;
   DependencyScan scan_;
