@@ -12,6 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "util.h"
+#include "state.h"
+#include "build.h"
+#include "graph.h"
+#include "clean.h"
+#include "browse.h"
+#include "metrics.h"
+#include "version.h"
+#include "graphviz.h"
+#include "deps_log.h"
+#include "build_log.h"
+#include "debug_flags.h"
+#include "disk_interface.h"
+#include "manifest_parser.h"
+
+#include <cinttypes>
+
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
@@ -29,21 +46,6 @@
 #include <getopt.h>
 #include <unistd.h>
 #endif
-
-#include "browse.h"
-#include "build.h"
-#include "build_log.h"
-#include "deps_log.h"
-#include "clean.h"
-#include "debug_flags.h"
-#include "disk_interface.h"
-#include "graph.h"
-#include "graphviz.h"
-#include "manifest_parser.h"
-#include "metrics.h"
-#include "state.h"
-#include "util.h"
-#include "version.h"
 
 #ifdef _MSC_VER
 // Defined in msvc_helper_main-win32.cc.
@@ -167,9 +169,11 @@ struct NinjaMain final : public BuildLogUser {
     // generators that want to use this information.
     std::string err;
     TimeStamp mtime = disk_interface_.Stat(std::string(s), &err);
-    if (mtime == -1)
+    if (mtime == TimeStamp::max())
+    {
       Error("%s", err.c_str());  // Log and ignore Stat() errors.
-    return mtime == 0;
+    }
+    return mtime == TimeStamp::min();;
   }
 };
 
@@ -521,11 +525,13 @@ int NinjaMain::ToolDeps(const Options* options, int argc, char** argv) {
 
     std::string err;
     TimeStamp mtime = disk_interface.Stat(node->path(), &err);
-    if (mtime == -1)
+    if (mtime == TimeStamp::max())
       Error("%s", err.c_str());  // Log and ignore Stat() errors;
     printf("%s: #deps %d, deps mtime %" PRId64 " (%s)\n",
-           node->path().c_str(), deps->node_count, deps->mtime,
-           (!mtime || mtime > deps->mtime ? "STALE":"VALID"));
+           node->path().c_str(),
+           deps->node_count,
+           std::chrono::duration_cast<std::chrono::nanoseconds>(deps->mtime.time_since_epoch()).count(),
+           (mtime != TimeStamp::min() || mtime > deps->mtime ? "STALE":"VALID"));
     for (int i = 0; i < deps->node_count; ++i)
       printf("    %s\n", deps->nodes[i]->path().c_str());
     printf("\n");

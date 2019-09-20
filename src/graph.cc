@@ -14,22 +14,25 @@
 
 #include "graph.h"
 
-#include <algorithm>
-#include <assert.h>
-#include <stdio.h>
-
+#include "util.h"
+#include "state.h"
+#include "metrics.h"
+#include "deps_log.h"
 #include "build_log.h"
 #include "debug_flags.h"
 #include "depfile_parser.h"
-#include "deps_log.h"
 #include "disk_interface.h"
 #include "manifest_parser.h"
-#include "metrics.h"
-#include "state.h"
-#include "util.h"
+
+
+#include <algorithm>
+#include <cinttypes>
+
+#include <assert.h>
+#include <stdio.h>
 
 bool Node::Stat(DiskInterface* disk_interface, std::string* err) {
-  return (mtime_ = disk_interface->Stat(path_, err)) != -1;
+  return (mtime_ = disk_interface->Stat(path_, err)) != TimeStamp::max();
 }
 
 bool DependencyScan::RecomputeDirty(Node* node, std::string* err) {
@@ -240,7 +243,7 @@ bool DependencyScan::RecomputeOutputDirty(Edge* edge,
     return false;
   }
 
-  BuildLog::LogEntry* entry = 0;
+  BuildLog::LogEntry* entry = nullptr;
 
   // Dirty if we're missing the output.
   if (!output->exists()) {
@@ -263,12 +266,15 @@ bool DependencyScan::RecomputeOutputDirty(Edge* edge,
       used_restat = true;
     }
 
-    if (output_mtime < most_recent_input->mtime()) {
+    if(output_mtime < most_recent_input->mtime())
+    {
       EXPLAIN("%soutput %s older than most recent input %s "
               "(%" PRId64 " vs %" PRId64 ")",
-              used_restat ? "restat of " : "", output->path().c_str(),
+              used_restat ? "restat of " : "",
+              output->path().c_str(),
               most_recent_input->path().c_str(),
-              output_mtime, most_recent_input->mtime());
+              std::chrono::duration_cast<std::chrono::nanoseconds>(output_mtime.time_since_epoch()).count(),
+              std::chrono::duration_cast<std::chrono::nanoseconds>(most_recent_input->mtime().time_since_epoch()).count());
       return true;
     }
   }
@@ -290,8 +296,10 @@ bool DependencyScan::RecomputeOutputDirty(Edge* edge,
         // on disk is newer if a previous run wrote to the output file but
         // exited with an error or was interrupted.
         EXPLAIN("recorded mtime of %s older than most recent input %s (%" PRId64 " vs %" PRId64 ")",
-                output->path().c_str(), most_recent_input->path().c_str(),
-                entry->mtime, most_recent_input->mtime());
+                output->path().c_str(),
+                most_recent_input->path().c_str(),
+                std::chrono::duration_cast<std::chrono::nanoseconds>(entry->mtime.time_since_epoch()).count(),
+                std::chrono::duration_cast<std::chrono::nanoseconds>(most_recent_input->mtime().time_since_epoch()).count());
         return true;
       }
     }
@@ -363,7 +371,7 @@ std::string EdgeEnv::LookupVariable(const std::string& var) {
       for (; it != lookups_.end(); ++it)
         cycle.append(*it + " -> ");
       cycle.append(var);
-      Fatal(("cycle in rule variables: " + cycle).c_str());
+      Fatal("cycle in rule variables: $s", cycle.c_str());
     }
   }
 
@@ -386,7 +394,7 @@ std::string EdgeEnv::MakePathList(const Node* const* const span,
       result.push_back(sep);
     const std::string& path = (*i)->PathDecanonicalized();
     if (escape_in_out_ == kShellEscape) {
-#if _WIN32
+#ifdef _WIN32
       GetWin32EscapedString(path, &result);
 #else
       GetShellEscapedString(path, &result);
@@ -486,8 +494,11 @@ std::string Node::PathDecanonicalized(const std::string& path, uint64_t slash_bi
 
 void Node::Dump(const char* prefix) const {
   printf("%s <%s 0x%p> mtime: %" PRId64 "%s, (:%s), ",
-         prefix, path().c_str(), this,
-         mtime(), mtime() ? "" : " (:missing)",
+         prefix,
+         path().c_str(),
+         this,
+         std::chrono::duration_cast<std::chrono::nanoseconds>(mtime().time_since_epoch()).count(),
+         mtime() != TimeStamp::min() ? "" : " (:missing)",
          dirty() ? " dirty" : " clean");
   if (in_edge()) {
     in_edge()->Dump("in-edge: ");
@@ -603,7 +614,9 @@ bool ImplicitDepLoader::LoadDepsFromLog(Edge* edge, std::string* err) {
   // Deps are invalid if the output is newer than the deps.
   if (output->mtime() > deps->mtime) {
     EXPLAIN("stored deps info out of date for '%s' (%" PRId64 " vs %" PRId64 ")",
-            output->path().c_str(), deps->mtime, output->mtime());
+            output->path().c_str(),
+            std::chrono::duration_cast<std::chrono::nanoseconds>(deps->mtime.time_since_epoch()).count(),
+            std::chrono::duration_cast<std::chrono::nanoseconds>(output->mtime().time_since_epoch()).count());
     return false;
   }
 
@@ -621,7 +634,7 @@ bool ImplicitDepLoader::LoadDepsFromLog(Edge* edge, std::string* err) {
 std::vector<Node*>::iterator ImplicitDepLoader::PreallocateSpace(Edge* edge,
                                                             int count) {
   edge->inputs_.insert(edge->inputs_.end() - edge->order_only_deps_,
-                       (size_t)count, 0);
+                       (size_t)count, nullptr);
   edge->implicit_deps_ += count;
   return edge->inputs_.end() - edge->order_only_deps_ - count;
 }

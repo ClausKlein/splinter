@@ -138,10 +138,12 @@ bool DepsLog::RecordDeps(Node* node, TimeStamp mtime,
   int id = node->id();
   if (fwrite(&id, 4, 1, file_) < 1)
     return false;
-  uint32_t mtime_part = static_cast<uint32_t>(mtime & 0xffffffff);
+
+  auto const ns_since_epoch = std::chrono::duration_cast<std::chrono::nanoseconds>(mtime.time_since_epoch());
+  uint32_t mtime_part = static_cast<uint32_t>(ns_since_epoch.count() & 0xffffffff);
   if (fwrite(&mtime_part, 4, 1, file_) < 1)
     return false;
-  mtime_part = static_cast<uint32_t>((mtime >> 32) & 0xffffffff);
+  mtime_part = static_cast<uint32_t>((ns_since_epoch.count() >> 32) & 0xffffffff);
   if (fwrite(&mtime_part, 4, 1, file_) < 1)
     return false;
   for (int i = 0; i < node_count; ++i) {
@@ -224,9 +226,8 @@ bool DepsLog::Load(const std::string& path, State* state, std::string* err) {
       assert(size % 4 == 0);
       int* deps_data = reinterpret_cast<int*>(buf);
       int out_id = deps_data[0];
-      TimeStamp mtime;
-      mtime = (TimeStamp)(((uint64_t)(unsigned int)deps_data[2] << 32) |
-                          (uint64_t)(unsigned int)deps_data[1]);
+      TimeStamp mtime(TimeStamp::duration(  ((uint64_t)(unsigned int)deps_data[2] << 32)
+                                                 |  (uint64_t)(unsigned int)deps_data[1]));
       deps_data += 3;
       int deps_count = (size / 4) - 3;
 

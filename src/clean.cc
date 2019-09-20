@@ -25,26 +25,31 @@
 Cleaner::Cleaner(State* state,
                  const BuildConfig& config,
                  DiskInterface* disk_interface)
-  : state_(state),
-    config_(config),
-    dyndep_loader_(state, disk_interface),
-    removed_(),
-    cleaned_(),
-    cleaned_files_count_(0),
-    disk_interface_(disk_interface),
-    status_(0) {
-}
+  : state_(state)
+  , config_(config)
+  , dyndep_loader_(state, disk_interface)
+  , removed_()
+  , cleaned_()
+  , cleaned_files_count_(0)
+  , disk_interface_(disk_interface)
+  , status_(0)
+{ }
 
-int Cleaner::RemoveFile(const std::string& path) {
+int Cleaner::RemoveFile(const std::string& path)
+{
   return disk_interface_->RemoveFile(path);
 }
 
-bool Cleaner::FileExists(const std::string& path) {
-  std::string err;
-  TimeStamp mtime = disk_interface_->Stat(path, &err);
-  if (mtime == -1)
-    Error("%s", err.c_str());
-  return mtime > 0;  // Treat Stat() errors as "file does not exist".
+bool Cleaner::FileExists(const std::string& path)
+{
+  std::error_code ec;
+  bool const exists = std::filesystem::exists(path, ec);
+  if( ! exists || ec)
+  {
+    Error("%s", ec.message().c_str());
+    return false;
+  }
+  return true;
 }
 
 void Cleaner::Report(const std::string& path) {

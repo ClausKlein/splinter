@@ -15,13 +15,14 @@
 #ifndef NINJA_BUILD_LOG_H_
 #define NINJA_BUILD_LOG_H_
 
-#include <string>
-#include <stdio.h>
+#include "util.h"  // uint64_t
+#include "timestamp.h"
 
+#include <string>
+#include <filesystem>
 #include <unordered_map>
 
-#include "timestamp.h"
-#include "util.h"  // uint64_t
+#include <stdio.h>
 
 struct Edge;
 
@@ -45,7 +46,7 @@ struct BuildLog final {
 
   bool OpenForWrite(const std::string& path, const BuildLogUser& user, std::string* err);
   bool RecordCommand(Edge* edge, int start_time, int end_time,
-                     TimeStamp mtime = 0);
+                     TimeStamp mtime = TimeStamp::min());
   void Close();
 
   /// Load the on-disk log.
@@ -56,7 +57,7 @@ struct BuildLog final {
     uint64_t command_hash;
     int start_time;
     int end_time;
-    TimeStamp mtime;
+    std::filesystem::file_time_type mtime;
 
     static uint64_t HashCommand(std::string_view command);
 
@@ -69,7 +70,7 @@ struct BuildLog final {
 
     explicit LogEntry(std::string output);
     LogEntry(std::string output, uint64_t command_hash,
-             int start_time, int end_time, TimeStamp restat_mtime);
+             int start_time, int end_time, std::filesystem::file_time_type restat_mtime);
   };
 
   /// Lookup a previously-run command by its output path.

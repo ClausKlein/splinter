@@ -761,7 +761,7 @@ void Builder::Cleanup() {
         // but is interrupted before it touches its output file.)
         std::string err;
         TimeStamp new_mtime = disk_interface_->Stat(inner->path(), &err);
-        if (new_mtime == -1)  // Log and ignore Stat() errors.
+        if (new_mtime == TimeStamp::max())  // Log and ignore Stat() errors.
           Error("%s", err.c_str());
         if (!depfile.empty() || inner->mtime() != new_mtime)
           disk_interface_->RemoveFile(inner->path());
@@ -977,14 +977,14 @@ bool Builder::FinishCommand(CommandRunner::Result* result, std::string* err) {
   }
 
   // Restat the edge outputs
-  TimeStamp output_mtime = 0;
+  TimeStamp output_mtime = TimeStamp::min();
   bool restat = edge->GetBindingBool("restat");
   if (!config_.dry_run) {
     bool node_cleaned = false;
 
     for (const auto & item : edge->outputs_) {
       TimeStamp new_mtime = disk_interface_->Stat(item->path(), err);
-      if (new_mtime == -1)
+      if (new_mtime == TimeStamp::max())
         return false;
       if (new_mtime > output_mtime)
         output_mtime = new_mtime;
@@ -999,22 +999,22 @@ bool Builder::FinishCommand(CommandRunner::Result* result, std::string* err) {
     }
 
     if (node_cleaned) {
-      TimeStamp restat_mtime = 0;
+      TimeStamp restat_mtime = TimeStamp::min();
       // If any output was cleaned, find the most recent mtime of any
       // (existing) non-order-only input or the depfile.
       for (std::vector<Node*>::iterator i = edge->inputs_.begin();
            i != edge->inputs_.end() - edge->order_only_deps_; ++i) {
         TimeStamp input_mtime = disk_interface_->Stat((*i)->path(), err);
-        if (input_mtime == -1)
+        if (input_mtime == TimeStamp::max())
           return false;
         if (input_mtime > restat_mtime)
           restat_mtime = input_mtime;
       }
 
       std::string depfile = edge->GetUnescapedDepfile();
-      if (restat_mtime != 0 && deps_type.empty() && !depfile.empty()) {
+      if (restat_mtime != TimeStamp::min() && deps_type.empty() && !depfile.empty()) {
         TimeStamp depfile_mtime = disk_interface_->Stat(depfile, err);
-        if (depfile_mtime == -1)
+        if (depfile_mtime == TimeStamp::max())
           return false;
         if (depfile_mtime > restat_mtime)
           restat_mtime = depfile_mtime;
@@ -1050,7 +1050,7 @@ bool Builder::FinishCommand(CommandRunner::Result* result, std::string* err) {
     assert(edge->outputs_.size() == 1 && "should have been rejected by parser");
     Node* out = edge->outputs_[0];
     TimeStamp deps_mtime = disk_interface_->Stat(out->path(), err);
-    if (deps_mtime == -1)
+    if (deps_mtime == TimeStamp::max())
       return false;
     if (!scan_.deps_log()->RecordDeps(out, deps_mtime, deps_nodes)) {
       *err = std::string("Error writing to deps log: ") + strerror(errno);
