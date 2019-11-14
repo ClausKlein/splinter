@@ -110,11 +110,11 @@ struct NinjaMain final : public BuildLogUser {
 
   /// Get the Node for a given command-line path, handling features like
   /// spell correction.
-  Node* CollectTarget(const char* cpath, std::string* err);
+  Node* CollectTarget(const char* cpath, std::error_code& err);
 
   /// CollectTarget for all command-line arguments, filling in \a targets.
   bool CollectTargetsFromArgs(int argc, char* argv[],
-                              std::vector<Node*>* targets, std::string* err);
+                              std::vector<Node*>* targets, std::error_code& err);
 
   // The various subcommands, run via "-t XXX".
   int ToolGraph(const Options* options, int argc, char* argv[]);
@@ -145,7 +145,7 @@ struct NinjaMain final : public BuildLogUser {
   /// Rebuild the manifest, if necessary.
   /// Fills in \a err on error.
   /// @return true if the manifest was rebuilt.
-  bool RebuildManifest(const char* input_file, std::string* err);
+  bool RebuildManifest(const char* input_file, std::error_code& err);
 
   /// Build the targets listed on the command line.
   /// @return an exit code.
@@ -167,11 +167,11 @@ struct NinjaMain final : public BuildLogUser {
     // which seems good enough for this corner case.)
     // Do keep entries around for files which still exist on disk, for
     // generators that want to use this information.
-    std::string err;
-    TimeStamp mtime = disk_interface_.Stat(std::string(s), &err);
+    std::error_code err;
+    TimeStamp mtime = disk_interface_.Stat(std::string(s), err);
     if (mtime == TimeStamp::max())
     {
-      Error("%s", err.c_str());  // Log and ignore Stat() errors.
+      Error("%s", err.message().c_str());  // Log and ignore Stat() errors.
     }
     return mtime == TimeStamp::min();;
   }
@@ -243,7 +243,7 @@ int GuessParallelism() {
 
 /// Rebuild the build manifest, if necessary.
 /// Returns true if the manifest was rebuilt.
-bool NinjaMain::RebuildManifest(const char* input_file, std::string* err) {
+bool NinjaMain::RebuildManifest(const char* input_file, std::error_code& err) {
   std::string path = input_file;
   uint64_t slash_bits;  // Unused because this path is only used for lookup.
   if (!CanonicalizePath(&path, &slash_bits, err))
@@ -274,7 +274,7 @@ bool NinjaMain::RebuildManifest(const char* input_file, std::string* err) {
   return true;
 }
 
-Node* NinjaMain::CollectTarget(const char* cpath, std::string* err) {
+Node* NinjaMain::CollectTarget(const char* cpath, std::error_code& err) {
   std::string path = cpath;
   uint64_t slash_bits;
   if (!CanonicalizePath(&path, &slash_bits, err))
@@ -291,7 +291,8 @@ Node* NinjaMain::CollectTarget(const char* cpath, std::string* err) {
   if (node) {
     if (first_dependent) {
       if (node->out_edges().empty()) {
-        *err = "'" + path + "' has no out edge";
+        //*err = "'" + path + "' has no out edge";
+        err = std::make_error_code(std::errc::invalid_argument);
         return nullptr;
       }
       Edge* edge = node->out_edges()[0];
@@ -303,16 +304,17 @@ Node* NinjaMain::CollectTarget(const char* cpath, std::string* err) {
     }
     return node;
   } else {
-    *err =
-        "unknown target '" + Node::PathDecanonicalized(path, slash_bits) + "'";
+    err = std::make_error_code(std::errc::invalid_argument);
+    //*err =
+    //    "unknown target '" + Node::PathDecanonicalized(path, slash_bits) + "'";
     if (path == "clean") {
-      *err += ", did you mean 'ninja -t clean'?";
+      //*err += ", did you mean 'ninja -t clean'?";
     } else if (path == "help") {
-      *err += ", did you mean 'ninja -h'?";
+      //*err += ", did you mean 'ninja -h'?";
     } else {
       Node* suggestion = state_.SpellcheckNode(path);
       if (suggestion) {
-        *err += ", did you mean '" + suggestion->path() + "'?";
+        //*err += ", did you mean '" + suggestion->path() + "'?";
       }
     }
     return nullptr;
@@ -320,10 +322,10 @@ Node* NinjaMain::CollectTarget(const char* cpath, std::string* err) {
 }
 
 bool NinjaMain::CollectTargetsFromArgs(int argc, char* argv[],
-                                       std::vector<Node*>* targets, std::string* err) {
+                                       std::vector<Node*>* targets, std::error_code& err) {
   if (argc == 0) {
     *targets = state_.DefaultNodes(err);
-    return err->empty();
+    return ! err;
   }
 
   for (int i = 0; i < argc; ++i) {
@@ -337,9 +339,9 @@ bool NinjaMain::CollectTargetsFromArgs(int argc, char* argv[],
 
 int NinjaMain::ToolGraph(const Options* options, int argc, char* argv[]) {
   std::vector<Node*> nodes;
-  std::string err;
-  if (!CollectTargetsFromArgs(argc, argv, &nodes, &err)) {
-    Error("%s", err.c_str());
+  std::error_code err;
+  if (!CollectTargetsFromArgs(argc, argv, &nodes, err)) {
+    Error("%s", err.message().c_str());
     return 1;
   }
 
@@ -363,18 +365,18 @@ int NinjaMain::ToolQuery(const Options* options, int argc, char* argv[]) {
   DyndepLoader dyndep_loader(&state_, &disk_interface_);
 
   for (int i = 0; i < argc; ++i) {
-    std::string err;
-    Node* node = CollectTarget(argv[i], &err);
+    std::error_code err;
+    Node* node = CollectTarget(argv[i], err);
     if (!node) {
-      Error("%s", err.c_str());
+      Error("%s", err.message().c_str());
       return 1;
     }
 
     printf("%s:\n", node->path().c_str());
     if (Edge* edge = node->in_edge()) {
       if (edge->dyndep_ && edge->dyndep_->dyndep_pending()) {
-        if (!dyndep_loader.LoadDyndeps(edge->dyndep_, &err)) {
-          Warning("%s\n", err.c_str());
+        if (!dyndep_loader.LoadDyndeps(edge->dyndep_, err)) {
+          Warning("%s\n", err.message().c_str());
         }
       }
       printf("  input: %s\n", edge->rule_->name().c_str());
@@ -507,9 +509,9 @@ int NinjaMain::ToolDeps(const Options* options, int argc, char** argv) {
       }
     }
   } else {
-    std::string err;
-    if (!CollectTargetsFromArgs(argc, argv, &nodes, &err)) {
-      Error("%s", err.c_str());
+    std::error_code err;
+    if (!CollectTargetsFromArgs(argc, argv, &nodes, err)) {
+      Error("%s", err.message().c_str());
       return 1;
     }
   }
@@ -523,10 +525,10 @@ int NinjaMain::ToolDeps(const Options* options, int argc, char** argv) {
       continue;
     }
 
-    std::string err;
-    TimeStamp mtime = disk_interface.Stat(node->path(), &err);
+    std::error_code err;
+    TimeStamp mtime = disk_interface.Stat(node->path(), err);
     if (mtime == TimeStamp::max())
-      Error("%s", err.c_str());  // Log and ignore Stat() errors;
+      Error("%s", err.message().c_str());  // Log and ignore Stat() errors;
     printf("%s: #deps %d, deps mtime %" PRId64 " (%s)\n",
            node->path().c_str(),
            deps->node_count,
@@ -570,12 +572,15 @@ int NinjaMain::ToolTargets(const Options* options, int argc, char* argv[]) {
     }
   }
 
-  std::string err;
-  std::vector<Node*> root_nodes = state_.RootNodes(&err);
-  if (err.empty()) {
+  std::error_code err;
+  std::vector<Node*> root_nodes = state_.RootNodes(err);
+  if( ! err)
+  {
     return ToolTargetsList(root_nodes, depth, 0);
-  } else {
-    Error("%s", err.c_str());
+  }
+  else
+  {
+    Error("%s", err.message().c_str());
     return 1;
   }
 }
@@ -674,9 +679,9 @@ int NinjaMain::ToolCommands(const Options* options, int argc, char* argv[]) {
   argc -= optind;
 
   std::vector<Node*> nodes;
-  std::string err;
-  if (!CollectTargetsFromArgs(argc, argv, &nodes, &err)) {
-    Error("%s", err.c_str());
+  std::error_code err;
+  if (!CollectTargetsFromArgs(argc, argv, &nodes, err)) {
+    Error("%s", err.message().c_str());
     return 1;
   }
 
@@ -1050,27 +1055,28 @@ bool NinjaMain::OpenBuildLog(bool recompact_only) {
   if (!build_dir_.empty())
     log_path = build_dir_ + "/" + log_path;
 
-  std::string err;
-  if (!build_log_.Load(log_path, &err)) {
-    Error("loading build log %s: %s", log_path.c_str(), err.c_str());
+  std::error_code err;
+  if (!build_log_.Load(log_path, err)) {
+    Error("loading build log %s: %s", log_path.c_str(), err.message().c_str());
     return false;
   }
-  if (!err.empty()) {
+  if(err)
+  {
     // Hack: Load() can return a warning via err by returning true.
-    Warning("%s", err.c_str());
+    Warning("%s", err.message().c_str());
     err.clear();
   }
 
   if (recompact_only) {
-    bool success = build_log_.Recompact(log_path, *this, &err);
+    bool success = build_log_.Recompact(log_path, *this, err);
     if (!success)
-      Error("failed recompaction: %s", err.c_str());
+      Error("failed recompaction: %s", err.message().c_str());
     return success;
   }
 
   if (!config_.dry_run) {
-    if (!build_log_.OpenForWrite(log_path, *this, &err)) {
-      Error("opening build log: %s", err.c_str());
+    if (!build_log_.OpenForWrite(log_path, *this, err)) {
+      Error("opening build log: %s", err.message().c_str());
       return false;
     }
   }
@@ -1085,27 +1091,28 @@ bool NinjaMain::OpenDepsLog(bool recompact_only) {
   if (!build_dir_.empty())
     path = build_dir_ + "/" + path;
 
-  std::string err;
-  if (!deps_log_.Load(path, &state_, &err)) {
-    Error("loading deps log %s: %s", path.c_str(), err.c_str());
+  std::error_code err;
+  if (!deps_log_.Load(path, &state_, err)) {
+    Error("loading deps log %s: %s", path.c_str(), err.message().c_str());
     return false;
   }
-  if (!err.empty()) {
+  if(err)
+  {
     // Hack: Load() can return a warning via err by returning true.
-    Warning("%s", err.c_str());
+    Warning("%s", err.message().c_str());
     err.clear();
   }
 
   if (recompact_only) {
-    bool success = deps_log_.Recompact(path, &err);
+    bool success = deps_log_.Recompact(path, err);
     if (!success)
-      Error("failed recompaction: %s", err.c_str());
+      Error("failed recompaction: %s", err.message().c_str());
     return success;
   }
 
   if (!config_.dry_run) {
-    if (!deps_log_.OpenForWrite(path, &err)) {
-      Error("opening deps log: %s", err.c_str());
+    if (!deps_log_.OpenForWrite(path, err)) {
+      Error("opening deps log: %s", err.message().c_str());
       return false;
     }
   }
@@ -1136,10 +1143,10 @@ bool NinjaMain::EnsureBuildDirExists() {
 }
 
 int NinjaMain::RunBuild(int argc, char** argv) {
-  std::string err;
+  std::error_code err;
   std::vector<Node*> targets;
-  if (!CollectTargetsFromArgs(argc, argv, &targets, &err)) {
-    Error("%s", err.c_str());
+  if (!CollectTargetsFromArgs(argc, argv, &targets, err)) {
+    Error("%s", err.message().c_str());
     return 1;
   }
 
@@ -1147,9 +1154,10 @@ int NinjaMain::RunBuild(int argc, char** argv) {
 
   Builder builder(&state_, config_, &build_log_, &deps_log_, &disk_interface_);
   for (size_t i = 0; i < targets.size(); ++i) {
-    if (!builder.AddTarget(targets[i], &err)) {
-      if (!err.empty()) {
-        Error("%s", err.c_str());
+    if (!builder.AddTarget(targets[i], err)) {
+      if(err)
+      {
+        Error("%s", err.message().c_str());
         return 1;
       } else {
         // Added a target that is already up-to-date; not really
@@ -1166,9 +1174,9 @@ int NinjaMain::RunBuild(int argc, char** argv) {
     return 0;
   }
 
-  if (!builder.Build(&err)) {
-    printf("ninja: build stopped: %s.\n", err.c_str());
-    if (err.find("interrupted by user") != std::string::npos) {
+  if (!builder.Build(err)) {
+    printf("ninja: build stopped: %s.\n", err.message().c_str());
+    if (err.message().find("interrupted by user") != std::string::npos) {
       return 2;
     }
     return 1;
@@ -1343,9 +1351,9 @@ NORETURN void real_main(int argc, char** argv) {
       parser_opts.phony_cycle_action_ = kPhonyCycleActionError;
     }
     ManifestParser parser(&ninja.state_, &ninja.disk_interface_, parser_opts);
-    std::string err;
-    if (!parser.Load(options.input_file, &err)) {
-      Error("%s", err.c_str());
+    std::error_code err;
+    if (!parser.Load(options.input_file, err)) {
+      Error("%s", err.message().c_str());
       exit(1);
     }
 
@@ -1362,15 +1370,17 @@ NORETURN void real_main(int argc, char** argv) {
       exit((ninja.*options.tool->func)(&options, argc, argv));
 
     // Attempt to rebuild the manifest before building anything else
-    if (ninja.RebuildManifest(options.input_file, &err)) {
+    if (ninja.RebuildManifest(options.input_file, err)) {
       // In dry_run mode the regeneration will succeed without changing the
       // manifest forever. Better to return immediately.
       if (config.dry_run)
         exit(0);
       // Start the build over with the new manifest.
       continue;
-    } else if (!err.empty()) {
-      Error("rebuilding '%s': %s", options.input_file, err.c_str());
+    }
+    else if(err)
+    {
+      Error("rebuilding '%s': %s", options.input_file, err.message().c_str());
       exit(1);
     }
 

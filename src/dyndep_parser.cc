@@ -29,7 +29,7 @@ DyndepParser::DyndepParser(State* state, FileReader* file_reader,
 }
 
 bool DyndepParser::Parse(const std::string& filename, const std::string& input,
-                         std::string* err) {
+                         std::error_code& err) {
   lexer_.Start(filename, input);
 
   // Require a supported ninja_dyndep_version value immediately so
@@ -72,7 +72,7 @@ bool DyndepParser::Parse(const std::string& filename, const std::string& input,
   return false;  // not reached
 }
 
-bool DyndepParser::ParseDyndepVersion(string* err) {
+bool DyndepParser::ParseDyndepVersion(std::error_code& err) {
   std::string name;
   EvalString let_value;
   if (!ParseLet(&name, &let_value, err))
@@ -90,7 +90,7 @@ bool DyndepParser::ParseDyndepVersion(string* err) {
   return true;
 }
 
-bool DyndepParser::ParseLet(string* key, EvalString* value, std::string* err) {
+bool DyndepParser::ParseLet(std::string* key, EvalString* value, std::error_code& err) {
   if (!lexer_.ReadIdent(key))
     return lexer_.Error("expected variable name", err);
   if (!ExpectToken(Lexer::EQUALS, err))
@@ -100,7 +100,7 @@ bool DyndepParser::ParseLet(string* key, EvalString* value, std::string* err) {
   return true;
 }
 
-bool DyndepParser::ParseEdge(string* err) {
+bool DyndepParser::ParseEdge(std::error_code& err) {
   // Parse one explicit output.  We expect it to already have an edge.
   // We will record its dynamically-discovered dependency information.
   Dyndeps* dyndeps = nullptr;
@@ -112,10 +112,12 @@ bool DyndepParser::ParseEdge(string* err) {
       return lexer_.Error("expected path", err);
 
     std::string path = out0.Evaluate(&env_);
-    std::string path_err;
+    std::error_code path_err;
     uint64_t slash_bits;
-    if (!CanonicalizePath(&path, &slash_bits, &path_err))
-      return lexer_.Error(path_err, err);
+    if (!CanonicalizePath(&path, &slash_bits, path_err))
+    {
+      return lexer_.Error(path_err.message(), err);
+    }
     Node* node = state_->LookupNode(path);
     if (!node || !node->in_edge())
       return lexer_.Error("no build statement exists for '" + path + "'", err);
@@ -143,7 +145,7 @@ bool DyndepParser::ParseEdge(string* err) {
     for (;;) {
       EvalString out;
       if (!lexer_.ReadPath(&out, err))
-        return err;
+        return !!err;
       if (out.empty())
         break;
       outs.push_back(out);
@@ -172,7 +174,7 @@ bool DyndepParser::ParseEdge(string* err) {
     for (;;) {
       EvalString in;
       if (!lexer_.ReadPath(&in, err))
-        return err;
+        return !!err;
       if (in.empty())
         break;
       ins.push_back(in);
@@ -200,20 +202,20 @@ bool DyndepParser::ParseEdge(string* err) {
   dyndeps->implicit_inputs_.reserve(ins.size());
   for (auto const& item : ins) {
     std::string path = item.Evaluate(&env_);
-    std::string path_err;
+    std::error_code path_err;
     uint64_t slash_bits;
-    if (!CanonicalizePath(&path, &slash_bits, &path_err))
-      return lexer_.Error(path_err, err);
+    if (!CanonicalizePath(&path, &slash_bits, path_err))
+      return lexer_.Error(path_err.message(), err);
     Node* n = state_->GetNode(path, slash_bits);
     dyndeps->implicit_inputs_.push_back(n);
   }
 
   for (auto const& item : outs) {
     std::string path = item.Evaluate(&env_);
-    std::string path_err;
+    std::error_code path_err;
     uint64_t slash_bits;
-    if (!CanonicalizePath(&path, &slash_bits, &path_err))
-      return lexer_.Error(path_err, err);
+    if (!CanonicalizePath(&path, &slash_bits, path_err))
+      return lexer_.Error(path_err.message(), err);
     Node* n = state_->GetNode(path, slash_bits);
     dyndeps->implicit_outputs_.push_back(n);
   }

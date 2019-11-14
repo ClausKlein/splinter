@@ -43,7 +43,7 @@ DepsLog::~DepsLog() {
   Close();
 }
 
-bool DepsLog::OpenForWrite(const std::string& path, std::string* err) {
+bool DepsLog::OpenForWrite(const std::string& path, std::error_code& err) {
   if (needs_recompaction_) {
     if (!Recompact(path, err))
       return false;
@@ -51,7 +51,7 @@ bool DepsLog::OpenForWrite(const std::string& path, std::string* err) {
 
   file_ = fopen(path.c_str(), "ab");
   if (!file_) {
-    *err = strerror(errno);
+    err = std::error_code(errno, std::system_category());
     return false;
   }
   // Set the buffer size to this and flush the file buffer after every record
@@ -65,16 +65,16 @@ bool DepsLog::OpenForWrite(const std::string& path, std::string* err) {
 
   if (ftell(file_) == 0) {
     if (fwrite(kFileSignature, sizeof(kFileSignature) - 1, 1, file_) < 1) {
-      *err = strerror(errno);
+      err = std::error_code(errno, std::system_category());
       return false;
     }
     if (fwrite(&kCurrentVersion, 4, 1, file_) < 1) {
-      *err = strerror(errno);
+      err = std::error_code(errno, std::system_category());
       return false;
     }
   }
   if (fflush(file_) != 0) {
-    *err = strerror(errno);
+    err = std::error_code(errno, std::system_category());
     return false;
   }
   return true;
@@ -169,14 +169,16 @@ void DepsLog::Close() {
   file_ = nullptr;
 }
 
-bool DepsLog::Load(const std::string& path, State* state, std::string* err) {
+bool DepsLog::Load(const std::string& path, State* state, std::error_code& err) {
   METRIC_RECORD(".ninja_deps load");
   char buf[kMaxRecordSize + 1];
   FILE* f = fopen(path.c_str(), "rb");
   if (!f) {
     if (errno == ENOENT)
+    {
       return true;
-    *err = strerror(errno);
+    }
+    err = std::error_code(errno, std::system_category());
     return false;
   }
 
@@ -191,9 +193,13 @@ bool DepsLog::Load(const std::string& path, State* state, std::string* err) {
   if (!valid_header || strcmp(buf, kFileSignature) != 0 ||
       version != kCurrentVersion) {
     if (version == 1)
-      *err = "deps log version change; rebuilding";
+    {
+      err = std::make_error_code(std::errc::wrong_protocol_type);
+    }
     else
-      *err = "bad deps log signature or version; starting over";
+    {
+        err = std::make_error_code(std::errc::illegal_byte_sequence);
+    }
     fclose(f);
     unlink(path.c_str());
     // Don't report this as a failure.  An empty deps log will cause
@@ -278,9 +284,9 @@ bool DepsLog::Load(const std::string& path, State* state, std::string* err) {
     // An error occurred while loading; try to recover by truncating the
     // file to the last fully-read record.
     if (ferror(f)) {
-      *err = strerror(ferror(f));
+      err = std::error_code(errno, std::system_category());
     } else {
-      *err = "premature end of file";
+      err = std::make_error_code(std::errc::broken_pipe);
     }
     fclose(f);
 
@@ -289,7 +295,7 @@ bool DepsLog::Load(const std::string& path, State* state, std::string* err) {
 
     // The truncate succeeded; we'll just report the load error as a
     // warning because the build can proceed.
-    *err += "; recovering";
+    //err += "; recovering";
     return true;
   }
 
@@ -314,7 +320,7 @@ DepsLog::Deps* DepsLog::GetDeps(Node* node) {
   return deps_[node->id()];
 }
 
-bool DepsLog::Recompact(const std::string& path, std::string* err) {
+bool DepsLog::Recompact(const std::string& path, std::error_code& err) {
   METRIC_RECORD(".ninja_deps recompact");
 
   Close();
@@ -357,12 +363,12 @@ bool DepsLog::Recompact(const std::string& path, std::string* err) {
   nodes_.swap(new_log.nodes_);
 
   if (unlink(path.c_str()) < 0) {
-    *err = strerror(errno);
+    err = std::error_code(errno, std::system_category());
     return false;
   }
 
   if (rename(temp_path.c_str(), path.c_str()) < 0) {
-    *err = strerror(errno);
+    err = std::error_code(errno, std::system_category());
     return false;
   }
 

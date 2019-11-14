@@ -32,7 +32,7 @@ ManifestParser::ManifestParser(State* state, FileReader* file_reader,
 }
 
 bool ManifestParser::Parse(const std::string& filename, const std::string& input,
-                           std::string* err) {
+                           std::error_code& err) {
   lexer_.Start(filename, input);
 
   for (;;) {
@@ -92,7 +92,7 @@ bool ManifestParser::Parse(const std::string& filename, const std::string& input
 }
 
 
-bool ManifestParser::ParsePool(std::string* err) {
+bool ManifestParser::ParsePool(std::error_code& err) {
   std::string name;
   if (!lexer_.ReadIdent(&name))
     return lexer_.Error("expected pool name", err);
@@ -129,7 +129,7 @@ bool ManifestParser::ParsePool(std::string* err) {
 }
 
 
-bool ManifestParser::ParseRule(std::string* err) {
+bool ManifestParser::ParseRule(std::error_code& err) {
   std::string name;
   if (!lexer_.ReadIdent(&name))
     return lexer_.Error("expected rule name", err);
@@ -170,7 +170,7 @@ bool ManifestParser::ParseRule(std::string* err) {
   return true;
 }
 
-bool ManifestParser::ParseLet(std::string* key, EvalString* value, std::string* err) {
+bool ManifestParser::ParseLet(std::string* key, EvalString* value, std::error_code& err) {
   if (!lexer_.ReadIdent(key))
     return lexer_.Error("expected variable name", err);
   if (!ExpectToken(Lexer::EQUALS, err))
@@ -180,7 +180,7 @@ bool ManifestParser::ParseLet(std::string* key, EvalString* value, std::string* 
   return true;
 }
 
-bool ManifestParser::ParseDefault(std::string* err) {
+bool ManifestParser::ParseDefault(std::error_code& err) {
   EvalString eval;
   if (!lexer_.ReadPath(&eval, err))
     return false;
@@ -189,12 +189,12 @@ bool ManifestParser::ParseDefault(std::string* err) {
 
   do {
     std::string path = eval.Evaluate(env_);
-    std::string path_err;
+    std::error_code path_err;
     uint64_t slash_bits;  // Unused because this only does lookup.
-    if (!CanonicalizePath(&path, &slash_bits, &path_err))
-      return lexer_.Error(path_err, err);
-    if (!state_->AddDefault(path, &path_err))
-      return lexer_.Error(path_err, err);
+    if (!CanonicalizePath(&path, &slash_bits, path_err))
+      return lexer_.Error(path_err.message(), err);
+    if (!state_->AddDefault(path, path_err))
+      return lexer_.Error(path_err.message(), err);
 
     eval.Clear();
     if (!lexer_.ReadPath(&eval, err))
@@ -207,7 +207,7 @@ bool ManifestParser::ParseDefault(std::string* err) {
   return true;
 }
 
-bool ManifestParser::ParseEdge(std::string* err) {
+bool ManifestParser::ParseEdge(std::error_code& err) {
   std::vector<EvalString> ins, outs;
 
   {
@@ -229,7 +229,7 @@ bool ManifestParser::ParseEdge(std::string* err) {
     for (;;) {
       EvalString out;
       if (!lexer_.ReadPath(&out, err))
-        return err;
+        return !!err;
       if (out.empty())
         break;
       outs.push_back(out);
@@ -267,7 +267,7 @@ bool ManifestParser::ParseEdge(std::string* err) {
     for (;;) {
       EvalString in;
       if (!lexer_.ReadPath(&in, err))
-        return err;
+        return !!err;
       if (in.empty())
         break;
       ins.push_back(in);
@@ -319,10 +319,10 @@ bool ManifestParser::ParseEdge(std::string* err) {
   edge->outputs_.reserve(outs.size());
   for (size_t i = 0, e = outs.size(); i != e; ++i) {
     std::string path = outs[i].Evaluate(env);
-    std::string path_err;
+    std::error_code path_err;
     uint64_t slash_bits;
-    if (!CanonicalizePath(&path, &slash_bits, &path_err))
-      return lexer_.Error(path_err, err);
+    if (!CanonicalizePath(&path, &slash_bits, path_err))
+      return lexer_.Error(path_err.message(), err);
     if (!state_->AddOut(edge, path, slash_bits)) {
       if (options_.dupe_edge_action_ == kDupeEdgeActionError) {
         lexer_.Error("multiple rules generate " + path + " [-w dupbuild=err]",
@@ -353,11 +353,11 @@ bool ManifestParser::ParseEdge(std::string* err) {
   for (const auto & item : ins)
   {
     std::string path = item.Evaluate(env);
-    std::string path_err;
+    std::error_code path_err;
     uint64_t slash_bits;
-    if (!CanonicalizePath(&path, &slash_bits, &path_err))
+    if (!CanonicalizePath(&path, &slash_bits, path_err))
     {
-      return lexer_.Error(path_err, err);
+      return lexer_.Error(path_err.message(), err);
     }
     state_->AddIn(edge, path, slash_bits);
   }
@@ -411,7 +411,7 @@ bool ManifestParser::ParseEdge(std::string* err) {
   return true;
 }
 
-bool ManifestParser::ParseFileInclude(bool new_scope, std::string* err) {
+bool ManifestParser::ParseFileInclude(bool new_scope, std::error_code& err) {
   EvalString eval;
   if (!lexer_.ReadPath(&eval, err))
     return false;

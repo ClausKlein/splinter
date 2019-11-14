@@ -180,9 +180,9 @@ int Cleaner::CleanTargets(int target_count, char* targets[]) {
   for (int i = 0; i < target_count; ++i) {
     std::string target_name = targets[i];
     uint64_t slash_bits;
-    std::string err;
-    if (!CanonicalizePath(&target_name, &slash_bits, &err)) {
-      Error("failed to canonicalize '%s': %s", target_name.c_str(), err.c_str());
+    std::error_code err;
+    if (!CanonicalizePath(&target_name, &slash_bits, err)) {
+      Error("failed to canonicalize '%s': %s", target_name.c_str(), err.message().c_str());
       status_ = 1;
     } else {
       Node* target = state_->LookupNode(target_name);
@@ -276,8 +276,8 @@ void Cleaner::LoadDyndeps() {
     if (Node* dyndep = item->dyndep_) {
       // Capture and ignore errors loading the dyndep file.
       // We clean as much of the graph as we know.
-      std::string err;
-      dyndep_loader_.LoadDyndeps(dyndep, &err);
+      std::error_code err;
+      dyndep_loader_.LoadDyndeps(dyndep, err);
     }
   }
 }

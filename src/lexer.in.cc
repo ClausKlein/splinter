@@ -19,7 +19,7 @@
 #include "eval_env.h"
 #include "util.h"
 
-bool Lexer::Error(const std::string& message, std::string* err) {
+bool Lexer::Error(const std::string& message, std::error_code& err) {
   // Compute line/column.
   int line = 1;
   const char* line_start = input_.data();
@@ -47,12 +47,12 @@ bool Lexer::Error(const std::string& message, std::string* err) {
         break;
       }
     }
-    *err += std::string(line_start, len);
-    if (truncated)
-      *err += "...";
-    *err += "\n";
-    *err += std::string(col, ' ');
-    *err += "^ near here";
+    err = std::make_error_code(std::errc::invalid_argument);
+//    if (truncated)
+//      *err += "...";
+//    *err += "\n";
+//    *err += std::string(col, ' ');
+//    *err += "^ near here";
   }
 
   return false;
@@ -202,7 +202,7 @@ bool Lexer::ReadIdent(std::string* out) {
   return true;
 }
 
-bool Lexer::ReadEvalString(EvalString* eval, bool path, std::string* err) {
+bool Lexer::ReadEvalString(EvalString* eval, bool path, std::error_code& err) {
   const char* p = ofs_;
   const char* q;
   const char* start;

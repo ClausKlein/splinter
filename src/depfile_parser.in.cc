@@ -40,7 +40,7 @@ DepfileParser::DepfileParser(DepfileParserOptions options)
 //
 // If anyone actually has depfiles that rely on the more complicated
 // behavior we can adjust this.
-bool DepfileParser::Parse(std::string* content, std::string* err) {
+bool DepfileParser::Parse(std::string* content, std::error_code& err) {
   // in: current parser input point.
   // end: end of input.
   // parsing_targets: whether we are parsing targets or dependencies.
@@ -149,13 +149,11 @@ bool DepfileParser::Parse(std::string* content, std::string* err) {
       if (is_dependency) {
         if (have_secondary_target_on_this_rule) {
           if (!have_newline_since_primary_target) {
-            *err = "depfile has multiple output paths";
+            err = std::make_error_code(std::errc::invalid_argument);
             return false;
           } else if (options_.depfile_distinct_target_lines_action_ ==
                      kDepfileDistinctTargetLinesActionError) {
-            *err =
-                "depfile has multiple output paths (on separate lines)"
-                " [-w depfilemulti=err]";
+            err = std::make_error_code(std::errc::invalid_argument);
             return false;
           } else {
             if (!warned_distinct_target_lines) {
@@ -184,7 +182,7 @@ bool DepfileParser::Parse(std::string* content, std::string* err) {
     }
   }
   if (!have_target) {
-    *err = "expected ':' in depfile";
+    err = std::make_error_code(std::errc::invalid_argument);
     return false;
   }
   return true;

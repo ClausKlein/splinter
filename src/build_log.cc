@@ -126,7 +126,7 @@ BuildLog::~BuildLog() {
 }
 
 bool BuildLog::OpenForWrite(const std::string& path, const BuildLogUser& user,
-                            std::string* err) {
+                            std::error_code& err) {
   if (needs_recompaction_) {
     if (!Recompact(path, user, err))
       return false;
@@ -134,7 +134,7 @@ bool BuildLog::OpenForWrite(const std::string& path, const BuildLogUser& user,
 
   log_file_ = fopen(path.c_str(), "ab");
   if (!log_file_) {
-    *err = strerror(errno);
+    err = std::error_code(errno, std::system_category());
     return false;
   }
   setvbuf(log_file_, nullptr, _IOLBF, BUFSIZ);
@@ -146,7 +146,7 @@ bool BuildLog::OpenForWrite(const std::string& path, const BuildLogUser& user,
 
   if (ftell(log_file_) == 0) {
     if (fprintf(log_file_, kFileSignature, kCurrentVersion) < 0) {
-      *err = strerror(errno);
+      err = std::error_code(errno, std::system_category());
       return false;
     }
   }
@@ -251,13 +251,13 @@ struct LineReader final {
   char* line_end_ = nullptr;
 };
 
-bool BuildLog::Load(const std::string& path, std::string* err) {
+bool BuildLog::Load(const std::string& path, std::error_code& err) {
   METRIC_RECORD(".ninja_log load");
   FILE* file = fopen(path.c_str(), "r");
   if (!file) {
     if (errno == ENOENT)
       return true;
-    *err = strerror(errno);
+    err = std::error_code(errno, std::system_category());
     return false;
   }
 
@@ -273,8 +273,7 @@ bool BuildLog::Load(const std::string& path, std::string* err) {
       sscanf(line_start, kFileSignature, &log_version);
 
       if (log_version < kOldestSupportedVersion) {
-        *err = ("build log version invalid, perhaps due to being too old; "
-                "starting over");
+        err = std::make_error_code(std::errc::invalid_argument);
         fclose(file);
         unlink(path.c_str());
         // Don't report this as a failure.  An empty build log will cause
@@ -380,19 +379,19 @@ bool BuildLog::WriteEntry(FILE* f, const LogEntry& entry) {
 }
 
 bool BuildLog::Recompact(const std::string& path, const BuildLogUser& user,
-                         std::string* err) {
+                         std::error_code& err) {
   METRIC_RECORD(".ninja_log recompact");
 
   Close();
   std::string temp_path = path + ".recompact";
   FILE* f = fopen(temp_path.c_str(), "wb");
   if (!f) {
-    *err = strerror(errno);
+    err = std::error_code(errno, std::system_category());
     return false;
   }
 
   if (fprintf(f, kFileSignature, kCurrentVersion) < 0) {
-    *err = strerror(errno);
+    err = std::error_code(errno, std::system_category());
     fclose(f);
     return false;
   }
@@ -406,7 +405,7 @@ bool BuildLog::Recompact(const std::string& path, const BuildLogUser& user,
     }
 
     if (!WriteEntry(f, *entry)) {
-      *err = strerror(errno);
+      err = std::error_code(errno, std::system_category());
       fclose(f);
       return false;
     }
@@ -419,12 +418,12 @@ bool BuildLog::Recompact(const std::string& path, const BuildLogUser& user,
 
   fclose(f);
   if (unlink(path.c_str()) < 0) {
-    *err = strerror(errno);
+    err = std::error_code(errno, std::system_category());
     return false;
   }
 
   if (rename(temp_path.c_str(), path.c_str()) < 0) {
-    *err = strerror(errno);
+    err = std::error_code(errno, std::system_category());
     return false;
   }
 

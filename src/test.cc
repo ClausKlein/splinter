@@ -108,9 +108,9 @@ Node* StateTestWithBuiltinRules::GetNode(const std::string& path) {
 void AssertParse(State* state, const char* input,
                  ManifestParserOptions opts) {
   ManifestParser parser(state, nullptr, opts);
-  std::string err;
-  EXPECT_TRUE(parser.ParseTest(input, &err));
-  ASSERT_EQ("", err);
+  std::error_code err;
+  EXPECT_TRUE(parser.ParseTest(input, err));
+  ASSERT_FALSE(err);
   VerifyGraph(*state);
 }
 
@@ -158,10 +158,9 @@ void VirtualFileSystem::Create(std::filesystem::path const& path,
   files_created_.insert(path);
 }
 
-TimeStamp VirtualFileSystem::Stat(std::filesystem::path const& path, std::string* err) const {
+TimeStamp VirtualFileSystem::Stat(std::filesystem::path const& path, std::error_code& err) const {
   FileMap::const_iterator i = files_.find(path);
   if (i != files_.end()) {
-    *err = i->second.stat_error;
     return i->second.mtime;
   }
   return TimeStamp::min();
@@ -179,14 +178,14 @@ bool VirtualFileSystem::MakeDir(std::filesystem::path const& path) {
 
 FileReader::Status VirtualFileSystem::ReadFile(std::filesystem::path const& path,
                                                std::string* contents,
-                                               std::string* err) {
+                                               std::error_code& err) {
   files_read_.push_back(path);
   FileMap::iterator i = files_.find(path);
   if (i != files_.end()) {
     *contents = i->second.contents;
     return Okay;
   }
-  *err = strerror(ENOENT);
+  err = std::make_error_code(std::errc::no_such_file_or_directory);
   return NotFound;
 }
 

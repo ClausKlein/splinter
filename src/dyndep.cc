@@ -24,13 +24,13 @@
 #include "state.h"
 #include "util.h"
 
-bool DyndepLoader::LoadDyndeps(Node* node, std::string* err) const {
+bool DyndepLoader::LoadDyndeps(Node* node, std::error_code& err) const {
   DyndepFile ddf;
   return LoadDyndeps(node, &ddf, err);
 }
 
 bool DyndepLoader::LoadDyndeps(Node* node, DyndepFile* ddf,
-                               std::string* err) const {
+                               std::error_code& err) const {
   // We are loading the dyndep file now so it is no longer pending.
   node->set_dyndep_pending(false);
 
@@ -46,10 +46,9 @@ bool DyndepLoader::LoadDyndeps(Node* node, DyndepFile* ddf,
       continue;
 
     DyndepFile::iterator ddi = ddf->find(edge);
-    if (ddi == ddf->end()) {
-      *err = ("'" + edge->outputs_[0]->path() + "' "
-              "not mentioned in its dyndep file "
-              "'" + node->path() + "'");
+    if(ddi == ddf->end())
+    {
+      err = std::make_error_code(std::errc::invalid_argument);
       return false;
     }
 
@@ -61,11 +60,11 @@ bool DyndepLoader::LoadDyndeps(Node* node, DyndepFile* ddf,
   }
 
   // Reject extra outputs in dyndep file.
-  for (auto const& [edge, dyndep] : *ddf) {
-    if (!dyndep.used_) {
-      *err = ("dyndep file '" + node->path() + "' mentions output "
-              "'" + edge->outputs_[0]->path() + "' whose build statement "
-              "does not have a dyndep binding for the file");
+  for(auto const& [edge, dyndep] : *ddf)
+  {
+    if(!dyndep.used_)
+    {
+      err = std::make_error_code(std::errc::invalid_argument);
       return false;
     }
   }
@@ -74,7 +73,7 @@ bool DyndepLoader::LoadDyndeps(Node* node, DyndepFile* ddf,
 }
 
 bool DyndepLoader::UpdateEdge(Edge* edge, Dyndeps const* dyndeps,
-                              std::string* err) const {
+                              std::error_code& err) const {
   // Add dyndep-discovered bindings to the edge.
   // We know the edge already has its own binding
   // scope because it has a "dyndep" binding.
@@ -88,14 +87,14 @@ bool DyndepLoader::UpdateEdge(Edge* edge, Dyndeps const* dyndeps,
   edge->implicit_outs_ += dyndeps->implicit_outputs_.size();
 
   // Add this edge as incoming to each new output.
-  for (std::vector<Node*>::const_iterator i =
-           dyndeps->implicit_outputs_.begin();
-       i != dyndeps->implicit_outputs_.end(); ++i) {
-    if ((*i)->in_edge() != nullptr) {
-      *err = "multiple rules generate " + (*i)->path();
+  for(auto const& pOutput : dyndeps->implicit_outputs_)
+  {
+    if(pOutput->in_edge() != nullptr)
+    {
+      err = std::make_error_code(std::errc::invalid_argument);
       return false;
     }
-    (*i)->set_in_edge(edge);
+    pOutput->set_in_edge(edge);
   }
 
   // Add the dyndep-discovered inputs to the edge.
@@ -105,16 +104,16 @@ bool DyndepLoader::UpdateEdge(Edge* edge, Dyndeps const* dyndeps,
   edge->implicit_deps_ += dyndeps->implicit_inputs_.size();
 
   // Add this edge as outgoing from each new input.
-  for (std::vector<Node*>::const_iterator i =
-           dyndeps->implicit_inputs_.begin();
-       i != dyndeps->implicit_inputs_.end(); ++i)
-    (*i)->AddOutEdge(edge);
+  for(auto const& pInput : dyndeps->implicit_inputs_)
+  {
+    pInput->AddOutEdge(edge);
+  }
 
   return true;
 }
 
 bool DyndepLoader::LoadDyndepFile(Node* file, DyndepFile* ddf,
-                                  std::string* err) const {
+                                  std::error_code& err) const {
   DyndepParser parser(state_, disk_interface_, ddf);
   return parser.Load(file->path(), err);
 }

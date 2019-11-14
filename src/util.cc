@@ -56,7 +56,7 @@
 #include "string_piece_util.h"
 
 
-bool CanonicalizePath(std::string* path, uint64_t* slash_bits, std::string* err) {
+bool CanonicalizePath(std::string* path, uint64_t* slash_bits, std::error_code& err) {
   METRIC_RECORD("canonicalize str");
   size_t len = path->size();
   char* str = 0;
@@ -77,12 +77,12 @@ static bool IsPathSeparator(char c) {
 }
 
 bool CanonicalizePath(char* path, size_t* len, uint64_t* slash_bits,
-                      std::string* err) {
+                      std::error_code& err) {
   // WARNING: this function is performance-critical; please benchmark
   // any changes you make to it.
   METRIC_RECORD("canonicalize path");
   if (*len == 0) {
-    *err = "empty path";
+    err = std::make_error_code(std::errc::no_such_file_or_directory);
     return false;
   }
 
@@ -279,7 +279,7 @@ void GetWin32EscapedString(const std::string& input, std::string* result) {
   result->push_back(kQuote);
 }
 
-int ReadFile(const std::string& path, std::string* contents, std::string* err) {
+int ReadFile(const std::string& path, std::string* contents, std::error_code& err) {
 #ifdef _WIN32
   // This makes a ninja run on a set of 1500 manifest files about 4% faster
   // than using the generic fopen code below.
@@ -308,13 +308,13 @@ int ReadFile(const std::string& path, std::string* contents, std::string* err) {
 #else
   FILE* f = fopen(path.c_str(), "rb");
   if (!f) {
-    err->assign(strerror(errno));
+    err = std::error_code(errno, std::system_category());
     return -errno;
   }
 
   struct stat st;
   if (fstat(fileno(f), &st) < 0) {
-    err->assign(strerror(errno));
+    err = std::error_code(errno, std::system_category());
     fclose(f);
     return -errno;
   }
@@ -328,7 +328,7 @@ int ReadFile(const std::string& path, std::string* contents, std::string* err) {
     contents->append(buf, len);
   }
   if (ferror(f)) {
-    err->assign(strerror(errno));  // XXX errno?
+    err = std::error_code(errno, std::system_category());  // XXX errno?
     contents->clear();
     fclose(f);
     return -errno;
@@ -580,7 +580,7 @@ std::string ElideMiddle(std::string_view const str, size_t const width)
   return std::string(str);
 }
 
-bool Truncate(const std::string& path, size_t size, std::string* err) {
+bool Truncate(const std::string& path, size_t size, std::error_code& err) {
 #ifdef _WIN32
   int fh = _sopen(path.c_str(), _O_RDWR | _O_CREAT, _SH_DENYNO,
                   _S_IREAD | _S_IWRITE);
@@ -592,7 +592,7 @@ bool Truncate(const std::string& path, size_t size, std::string* err) {
   // Both truncate() and _chsize() return 0 on success and set errno and return
   // -1 on failure.
   if (success < 0) {
-    *err = strerror(errno);
+    err = std::error_code(errno, std::system_category());
     return false;
   }
   return true;

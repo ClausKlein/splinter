@@ -16,6 +16,7 @@
 #define NINJA_LEXER_H_
 
 #include <string_view>
+#include <system_error>
 
 // Windows may #define ERROR.
 #ifdef ERROR
@@ -76,25 +77,25 @@ struct Lexer final {
   /// Read a path (complete with $escapes).
   /// Returns false only on error, returned path may be empty if a delimiter
   /// (space, newline) is hit.
-  bool ReadPath(EvalString* path, std::string* err) {
+  bool ReadPath(EvalString* path, std::error_code& err) {
     return ReadEvalString(path, true, err);
   }
 
   /// Read the value side of a var = value line (complete with $escapes).
   /// Returns false only on error.
-  bool ReadVarValue(EvalString* value, std::string* err) {
+  bool ReadVarValue(EvalString* value, std::error_code& err) {
     return ReadEvalString(value, false, err);
   }
 
   /// Construct an error message with context.
-  bool Error(const std::string& message, std::string* err);
+  bool Error(const std::string& message, std::error_code& err);
 
 private:
   /// Skip past whitespace (called after each read token/ident/etc.).
   void EatWhitespace();
 
   /// Read a $-escaped string.
-  bool ReadEvalString(EvalString* eval, bool path, std::string* err);
+  bool ReadEvalString(EvalString* eval, bool path, std::error_code& err);
 
   std::string_view filename_;
   std::string_view input_;

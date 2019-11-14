@@ -15,16 +15,17 @@
 #ifndef NINJA_UTIL_H_
 #define NINJA_UTIL_H_
 
+#include <string>
+#include <vector>
+#include <system_error>
+
+#include <stdio.h>
+
 #ifdef _WIN32
 #include "win32port.h"
 #else
 #include <stdint.h>
 #endif
-
-#include <string>
-#include <vector>
-
-#include <stdio.h>
 
 #ifdef _MSC_VER
 #define NORETURN __declspec(noreturn)
@@ -86,9 +87,9 @@ void Error(const char* msg, ARGS_T && ... args)
 /// Canonicalize a path like "foo/../bar.h" into just "bar.h".
 /// |slash_bits| has bits set starting from lowest for a backslash that was
 /// normalized to a forward slash. (only used on Windows)
-bool CanonicalizePath(std::string* path, uint64_t* slash_bits, std::string* err);
+bool CanonicalizePath(std::string* path, uint64_t* slash_bits, std::error_code& err);
 bool CanonicalizePath(char* path, size_t* len, uint64_t* slash_bits,
-                      std::string* err);
+                      std::error_code& err);
 
 /// Appends |input| to |*result|, escaping according to the whims of either
 /// Bash, or Win32's CommandLineToArgvW().
@@ -100,7 +101,7 @@ void GetWin32EscapedString(const std::string& input, std::string* result);
 /// Read a file to a string (in text mode: with CRLF conversion
 /// on Windows).
 /// Returns -errno and fills in \a err on error.
-int ReadFile(const std::string& path, std::string* contents, std::string* err);
+int ReadFile(const std::string& path, std::string* contents, std::error_code& err);
 
 /// Mark a file descriptor to not be inherited on exec()s.
 void SetCloseOnExec(int fd);
@@ -131,7 +132,7 @@ double GetLoadAverage();
 std::string ElideMiddle(std::string_view str, size_t width);
 
 /// Truncates a file to the given size.
-bool Truncate(const std::string& path, size_t size, std::string* err);
+bool Truncate(const std::string& path, size_t size, std::error_code& err);
 
 #ifdef _MSC_VER
 #define snprintf _snprintf

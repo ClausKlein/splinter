@@ -17,6 +17,7 @@
 
 #include <set>
 #include <string>
+#include <system_error>
 
 /// Visual Studio's cl.exe requires some massaging to work with Ninja;
 /// for example, it emits include information on stderr in a funny
@@ -43,7 +44,7 @@ struct CLParser final {
   /// should be printed (if any). Returns true on success, or false with err
   /// filled. output must not be the same object as filtered_object.
   bool Parse(const std::string& output, const std::string& deps_prefix,
-             std::string* filtered_output, std::string* err);
+             std::string* filtered_output, std::error_code& err);
 
   std::set<std::string> includes_;
 };
